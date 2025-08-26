@@ -227,6 +227,23 @@ def load_all_data(uid: str) -> dict:
     return data
 
 
+# Preferences stored at meta.prefs
+PREFS_PATH = "meta/prefs"
+DEFAULT_SORT = "High → Low (spent)"
+
+
+def get_user_prefs(uid: str) -> dict:
+    prefs = fb_get(uid, PREFS_PATH) or {}
+    # ensure a default sort if none
+    if "category_sort" not in prefs:
+        prefs["category_sort"] = DEFAULT_SORT
+    return prefs
+
+
+def set_user_prefs(uid: str, prefs: dict) -> None:
+    fb_update(uid, PREFS_PATH, prefs)
+
+
 def ensure_month_exists(data: dict, mkey: str) -> None:
    # months = data.setdefault("months", {})
     if mkey not in data["months"]:
@@ -401,7 +418,12 @@ def daily_tab(uid: str, data: dict):
 
     # Category sorting controls
     sort_options = ["A → Z", "Z → A", "High → Low (spent)", "Low → High (spent)"]
-    sort_mode = st.selectbox("Category sort", sort_options, index=0, key=f"daily_sort_{mkey}")
+    prefs = get_user_prefs(uid)
+    default_idx = sort_options.index(prefs.get("category_sort", DEFAULT_SORT)) if prefs.get("category_sort", DEFAULT_SORT) in sort_options else 0
+    sort_mode = st.selectbox("Category sort", sort_options, index=default_idx, key=f"daily_sort_{mkey}")
+    if sort_mode != prefs.get("category_sort"):
+        prefs["category_sort"] = sort_mode
+        set_user_prefs(uid, prefs)
     spend_by_cat = {c: sum(Decimal(str(r.get(c, "0") or "0")) for r in dates.values()) for c in cats}
     if sort_mode == "A → Z":
         sorted_cats = sorted(cats)
@@ -512,7 +534,12 @@ def monthly_tab(uid: str, data: dict):
 
     # Category sorting controls
     sort_options = ["A → Z", "Z → A", "High → Low (spent)", "Low → High (spent)"]
-    sort_mode = st.selectbox("Category sort", sort_options, index=0, key=f"monthly_sort_{mkey}")
+    prefs = get_user_prefs(uid)
+    default_idx = sort_options.index(prefs.get("category_sort", DEFAULT_SORT)) if prefs.get("category_sort", DEFAULT_SORT) in sort_options else 0
+    sort_mode = st.selectbox("Category sort", sort_options, index=default_idx, key=f"monthly_sort_{mkey}")
+    if sort_mode != prefs.get("category_sort"):
+        prefs["category_sort"] = sort_mode
+        set_user_prefs(uid, prefs)
     if sort_mode == "A → Z":
         sorted_cats = sorted(cats)
     elif sort_mode == "Z → A":
@@ -575,7 +602,12 @@ def yearly_tab(uid: str, data: dict):
 
     # Category sorting controls
     sort_options = ["A → Z", "Z → A", "High → Low (spent)", "Low → High (spent)"]
-    sort_mode = st.selectbox("Category sort", sort_options, index=0, key=f"yearly_sort_{year}")
+    prefs = get_user_prefs(uid)
+    default_idx = sort_options.index(prefs.get("category_sort", DEFAULT_SORT)) if prefs.get("category_sort", DEFAULT_SORT) in sort_options else 0
+    sort_mode = st.selectbox("Category sort", sort_options, index=default_idx, key=f"yearly_sort_{year}")
+    if sort_mode != prefs.get("category_sort"):
+        prefs["category_sort"] = sort_mode
+        set_user_prefs(uid, prefs)
     if sort_mode == "A → Z":
         sorted_cats = sorted(cats)
     elif sort_mode == "Z → A":
