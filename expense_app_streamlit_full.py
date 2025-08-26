@@ -612,52 +612,52 @@ def yearly_tab(uid: str, data: dict):
 
 # -------------------- App --------------------
 def main():
-	st.set_page_config(page_title=APP_TITLE, page_icon="💸", layout="wide")
-	st.title(APP_TITLE)
+    st.set_page_config(page_title=APP_TITLE, page_icon="💸", layout="wide")
+    st.title(APP_TITLE)
 
-	# Firebase Admin for DB
-	try:
-		init_firebase_admin()
-	except Exception as e:
-		st.error(f"Firebase init failed: {e}")
-		st.stop()
+    # Firebase Admin for DB
+    try:
+        init_firebase_admin()
+    except Exception as e:
+        st.error(f"Firebase init failed: {e}")
+        st.stop()
 
-	# Auth (auto or interactive)
-	auth = auth_gate()
-	if not auth and "uid" not in st.session_state:
-		st.stop()
+    # Auth (auto or interactive)
+    auth = auth_gate()
+    if not auth and "uid" not in st.session_state:
+        st.stop()
 
-	uid = st.session_state.get("uid")
-	email = st.session_state.get("email")
+    uid = st.session_state.get("uid")
+    email = st.session_state.get("email")
 
-	with st.sidebar:
-		st.markdown("### Account")
-		st.caption(f"Signed in as {email}")
-		if st.button("Logout"):
-			st.session_state.pop("uid", None)
-			st.session_state.pop("email", None)
-			clear_saved_session()
-			st.experimental_rerun()
-		st.markdown("---")
-		st.markdown("### Navigation")
-		st.caption("Use tabs on the right to switch views.")
+    with st.sidebar:
+        st.markdown("### Account")
+        st.caption(f"Signed in as {email}")
+        if st.button("Logout"):
+            st.session_state.pop("uid", None)
+            st.session_state.pop("email", None)
+            clear_saved_session()
+            st.experimental_rerun()
+        st.markdown("---")
+        st.markdown("### Navigation")
+        st.caption("Use tabs on the right to switch views.")
 
-	# Load data
-	data = load_all_data(uid)
-	if not data:
-		data = DEFAULT_DATA
-		fb_set(uid, "", data)
+    # Load data
+    data = load_all_data(uid)
+    if not data:
+        data = DEFAULT_DATA
+        fb_set(uid, "", data)
 
-	# Tabs
-	tab1, tab2, tab3 = st.tabs(["Daily", "Monthly Summary", "Yearly Summary"])
-	with tab1:
-		daily_tab(uid, data)
-	with tab2:
-		monthly_tab(uid, data)
-	with tab3:
-		yearly_tab(uid, data)
+    # Tabs
+    tab1, tab2, tab3 = st.tabs(["Daily", "Monthly Summary", "Yearly Summary"])
+    with tab1:
+        daily_tab(uid, data)
+    with tab2:
+        monthly_tab(uid, data)
+    with tab3:
+        yearly_tab(uid, data)
 
-	st.caption("Your data root: /users/%s/  (private per account)" % uid)
+    st.caption("Your data root: /users/%s/  (private per account)" % uid)
 
 
 if __name__ == "__main__":
