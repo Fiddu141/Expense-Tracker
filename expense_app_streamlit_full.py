@@ -227,6 +227,23 @@ def load_all_data(uid: str) -> dict:
     return data
 
 
+# Preferences stored at meta.prefs
+PREFS_PATH = "meta/prefs"
+DEFAULT_SORT = "High → Low (spent)"
+
+
+def get_user_prefs(uid: str) -> dict:
+    prefs = fb_get(uid, PREFS_PATH) or {}
+    # ensure a default sort if none
+    if "category_sort" not in prefs:
+        prefs["category_sort"] = DEFAULT_SORT
+    return prefs
+
+
+def set_user_prefs(uid: str, prefs: dict) -> None:
+    fb_update(uid, PREFS_PATH, prefs)
+
+
 def ensure_month_exists(data: dict, mkey: str) -> None:
    # months = data.setdefault("months", {})
     if mkey not in data["months"]:
@@ -398,6 +415,25 @@ def daily_tab(uid: str, data: dict):
     cats = data["meta"]["categories"]
     data = ensure_month_exists(data, mkey)  # ✅ Fix KeyError
     dates = data["months"][mkey]["dates"]
+
+    # Category sorting controls
+    sort_options = ["A → Z", "Z → A", "High → Low (spent)", "Low → High (spent)"]
+    prefs = get_user_prefs(uid)
+    default_idx = sort_options.index(prefs.get("category_sort", DEFAULT_SORT)) if prefs.get("category_sort", DEFAULT_SORT) in sort_options else 0
+    sort_mode = st.selectbox("Category sort", sort_options, index=default_idx, key=f"daily_sort_{mkey}")
+    if sort_mode != prefs.get("category_sort"):
+        prefs["category_sort"] = sort_mode
+        set_user_prefs(uid, prefs)
+    spend_by_cat = {c: sum(Decimal(str(r.get(c, "0") or "0")) for r in dates.values()) for c in cats}
+    if sort_mode == "A → Z":
+        sorted_cats = sorted(cats)
+    elif sort_mode == "Z → A":
+        sorted_cats = sorted(cats, reverse=True)
+    elif sort_mode == "High → Low (spent)":
+        sorted_cats = sorted(cats, key=lambda c: spend_by_cat.get(c, Decimal(0)), reverse=True)
+    else:
+        sorted_cats = sorted(cats, key=lambda c: spend_by_cat.get(c, Decimal(0)))
+
     rows = []
     for dkey in sorted(dates.keys()):
         row = {"Date": dkey}
@@ -406,7 +442,7 @@ def daily_tab(uid: str, data: dict):
         total = sum((Decimal(str(row[c])) if str(row[c]).strip() else Decimal(0)) for c in cats)
         row["Total"] = str(total)
         rows.append(row)
-    df = pd.DataFrame(rows, columns=( ["Date"] + cats + ["Total"] )) if rows else pd.DataFrame(columns=( ["Date"] + cats + ["Total"] ))
+    df = pd.DataFrame(rows, columns=( ["Date"] + sorted_cats + ["Total"] )) if rows else pd.DataFrame(columns=( ["Date"] + sorted_cats + ["Total"] ))
 
     # KPIs for current month
     income_dec = Decimal(data["months"][mkey].get("income", "0") or "0")
@@ -421,10 +457,10 @@ def daily_tab(uid: str, data: dict):
 
     # Prepare numeric editor with currency formatting
     df_display = df.copy()
-    for _c in (cats + ["Total"]):
+    for _c in (sorted_cats + ["Total"]):
         if _c in df_display.columns:
             df_display[_c] = pd.to_numeric(df_display[_c], errors="coerce").fillna(0.0)
-    col_config = { _c: st.column_config.NumberColumn(_c, step=0.01, format=f"{CURRENCY}%.2f") for _c in cats }
+    col_config = { _c: st.column_config.NumberColumn(_c, step=0.01, format=f"{CURRENCY}%.2f") for _c in sorted_cats }
     col_config["Total"] = st.column_config.NumberColumn("Total", step=0.01, format=f"{CURRENCY}%.2f")
 
     st.write("### Daily Expenses")
@@ -496,10 +532,27 @@ def monthly_tab(uid: str, data: dict):
             except InvalidOperation:
                 pass
 
+    # Category sorting controls
+    sort_options = ["A → Z", "Z → A", "High → Low (spent)", "Low → High (spent)"]
+    prefs = get_user_prefs(uid)
+    default_idx = sort_options.index(prefs.get("category_sort", DEFAULT_SORT)) if prefs.get("category_sort", DEFAULT_SORT) in sort_options else 0
+    sort_mode = st.selectbox("Category sort", sort_options, index=default_idx, key=f"monthly_sort_{mkey}")
+    if sort_mode != prefs.get("category_sort"):
+        prefs["category_sort"] = sort_mode
+        set_user_prefs(uid, prefs)
+    if sort_mode == "A → Z":
+        sorted_cats = sorted(cats)
+    elif sort_mode == "Z → A":
+        sorted_cats = sorted(cats, reverse=True)
+    elif sort_mode == "High → Low (spent)":
+        sorted_cats = sorted(cats, key=lambda c: cat_totals.get(c, Decimal(0)), reverse=True)
+    else:
+        sorted_cats = sorted(cats, key=lambda c: cat_totals.get(c, Decimal(0)))
+
     total_sum = sum(cat_totals.values())
     ratio = (total_sum / income * 100) if income > 0 else None
 
-    tbl = pd.DataFrame({"Category": cats, "Total": [float(cat_totals[c]) for c in cats]})
+    tbl = pd.DataFrame({"Category": sorted_cats, "Total": [float(cat_totals[c]) for c in sorted_cats]})
 
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("Income", format_money(income))
@@ -547,10 +600,27 @@ def yearly_tab(uid: str, data: dict):
                 except InvalidOperation:
                     pass
 
+    # Category sorting controls
+    sort_options = ["A → Z", "Z → A", "High → Low (spent)", "Low → High (spent)"]
+    prefs = get_user_prefs(uid)
+    default_idx = sort_options.index(prefs.get("category_sort", DEFAULT_SORT)) if prefs.get("category_sort", DEFAULT_SORT) in sort_options else 0
+    sort_mode = st.selectbox("Category sort", sort_options, index=default_idx, key=f"yearly_sort_{year}")
+    if sort_mode != prefs.get("category_sort"):
+        prefs["category_sort"] = sort_mode
+        set_user_prefs(uid, prefs)
+    if sort_mode == "A → Z":
+        sorted_cats = sorted(cats)
+    elif sort_mode == "Z → A":
+        sorted_cats = sorted(cats, reverse=True)
+    elif sort_mode == "High → Low (spent)":
+        sorted_cats = sorted(cats, key=lambda c: cat_totals.get(c, Decimal(0)), reverse=True)
+    else:
+        sorted_cats = sorted(cats, key=lambda c: cat_totals.get(c, Decimal(0)))
+
     total_sum = sum(cat_totals.values())
     ratio = (total_sum / total_income * 100) if total_income > 0 else None
 
-    tbl = pd.DataFrame({"Category": cats, "Total": [float(cat_totals[c]) for c in cats]})
+    tbl = pd.DataFrame({"Category": sorted_cats, "Total": [float(cat_totals[c]) for c in sorted_cats]})
 
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("Total Income", format_money(total_income))
@@ -574,52 +644,52 @@ def yearly_tab(uid: str, data: dict):
 
 # -------------------- App --------------------
 def main():
-	st.set_page_config(page_title=APP_TITLE, page_icon="💸", layout="wide")
-	st.title(APP_TITLE)
+    st.set_page_config(page_title=APP_TITLE, page_icon="💸", layout="wide")
+    st.title(APP_TITLE)
 
-	# Firebase Admin for DB
-	try:
-		init_firebase_admin()
-	except Exception as e:
-		st.error(f"Firebase init failed: {e}")
-		st.stop()
+    # Firebase Admin for DB
+    try:
+        init_firebase_admin()
+    except Exception as e:
+        st.error(f"Firebase init failed: {e}")
+        st.stop()
 
-	# Auth (auto or interactive)
-	auth = auth_gate()
-	if not auth and "uid" not in st.session_state:
-		st.stop()
+    # Auth (auto or interactive)
+    auth = auth_gate()
+    if not auth and "uid" not in st.session_state:
+        st.stop()
 
-	uid = st.session_state.get("uid")
-	email = st.session_state.get("email")
+    uid = st.session_state.get("uid")
+    email = st.session_state.get("email")
 
-	with st.sidebar:
-		st.markdown("### Account")
-		st.caption(f"Signed in as {email}")
-		if st.button("Logout"):
-			st.session_state.pop("uid", None)
-			st.session_state.pop("email", None)
-			clear_saved_session()
-			st.experimental_rerun()
-		st.markdown("---")
-		st.markdown("### Navigation")
-		st.caption("Use tabs on the right to switch views.")
+    with st.sidebar:
+        st.markdown("### Account")
+        st.caption(f"Signed in as {email}")
+        if st.button("Logout"):
+            st.session_state.pop("uid", None)
+            st.session_state.pop("email", None)
+            clear_saved_session()
+            st.experimental_rerun()
+        st.markdown("---")
+        st.markdown("### Navigation")
+        st.caption("Use tabs on the right to switch views.")
 
-	# Load data
-	data = load_all_data(uid)
-	if not data:
-		data = DEFAULT_DATA
-		fb_set(uid, "", data)
+    # Load data
+    data = load_all_data(uid)
+    if not data:
+        data = DEFAULT_DATA
+        fb_set(uid, "", data)
 
-	# Tabs
-	tab1, tab2, tab3 = st.tabs(["Daily", "Monthly Summary", "Yearly Summary"])
-	with tab1:
-		daily_tab(uid, data)
-	with tab2:
-		monthly_tab(uid, data)
-	with tab3:
-		yearly_tab(uid, data)
+    # Tabs
+    tab1, tab2, tab3 = st.tabs(["Daily", "Monthly Summary", "Yearly Summary"])
+    with tab1:
+        daily_tab(uid, data)
+    with tab2:
+        monthly_tab(uid, data)
+    with tab3:
+        yearly_tab(uid, data)
 
-	st.caption("Your data root: /users/%s/  (private per account)" % uid)
+    st.caption("Your data root: /users/%s/  (private per account)" % uid)
 
 
 if __name__ == "__main__":
