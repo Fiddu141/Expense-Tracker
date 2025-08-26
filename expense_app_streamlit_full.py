@@ -416,14 +416,18 @@ def daily_tab(uid: str, data: dict):
     data = ensure_month_exists(data, mkey)  # ✅ Fix KeyError
     dates = data["months"][mkey]["dates"]
 
-    # Category sorting controls
-    sort_options = ["A → Z", "Z → A", "High → Low (spent)", "Low → High (spent)"]
-    prefs = get_user_prefs(uid)
-    default_idx = sort_options.index(prefs.get("category_sort", DEFAULT_SORT)) if prefs.get("category_sort", DEFAULT_SORT) in sort_options else 0
-    sort_mode = st.selectbox("Category sort", sort_options, index=default_idx, key=f"daily_sort_{mkey}")
-    if sort_mode != prefs.get("category_sort"):
-        prefs["category_sort"] = sort_mode
-        set_user_prefs(uid, prefs)
+    # Daily header and category sorting controls
+    ctitle, csort = st.columns([3,2])
+    with ctitle:
+        st.write("### Daily Expenses")
+    with csort:
+        sort_options = ["A → Z", "Z → A", "High → Low (spent)", "Low → High (spent)"]
+        prefs = get_user_prefs(uid)
+        default_idx = sort_options.index(prefs.get("category_sort", DEFAULT_SORT)) if prefs.get("category_sort", DEFAULT_SORT) in sort_options else 0
+        sort_mode = st.selectbox("Category sort", sort_options, index=default_idx, key=f"daily_sort_{mkey}")
+        if sort_mode != prefs.get("category_sort"):
+            prefs["category_sort"] = sort_mode
+            set_user_prefs(uid, prefs)
     spend_by_cat = {c: sum(Decimal(str(r.get(c, "0") or "0")) for r in dates.values()) for c in cats}
     if sort_mode == "A → Z":
         sorted_cats = sorted(cats)
@@ -463,7 +467,6 @@ def daily_tab(uid: str, data: dict):
     col_config = { _c: st.column_config.NumberColumn(_c, step=0.01, format=f"{CURRENCY}%.2f") for _c in sorted_cats }
     col_config["Total"] = st.column_config.NumberColumn("Total", step=0.01, format=f"{CURRENCY}%.2f")
 
-    st.write("### Daily Expenses")
     edited = st.data_editor(
         df_display,
         num_rows="dynamic",
