@@ -398,6 +398,20 @@ def daily_tab(uid: str, data: dict):
     cats = data["meta"]["categories"]
     data = ensure_month_exists(data, mkey)  # ✅ Fix KeyError
     dates = data["months"][mkey]["dates"]
+
+    # Category sorting controls
+    sort_options = ["A → Z", "Z → A", "High → Low (spent)", "Low → High (spent)"]
+    sort_mode = st.selectbox("Category sort", sort_options, index=0, key=f"daily_sort_{mkey}")
+    spend_by_cat = {c: sum(Decimal(str(r.get(c, "0") or "0")) for r in dates.values()) for c in cats}
+    if sort_mode == "A → Z":
+        sorted_cats = sorted(cats)
+    elif sort_mode == "Z → A":
+        sorted_cats = sorted(cats, reverse=True)
+    elif sort_mode == "High → Low (spent)":
+        sorted_cats = sorted(cats, key=lambda c: spend_by_cat.get(c, Decimal(0)), reverse=True)
+    else:
+        sorted_cats = sorted(cats, key=lambda c: spend_by_cat.get(c, Decimal(0)))
+
     rows = []
     for dkey in sorted(dates.keys()):
         row = {"Date": dkey}
@@ -406,7 +420,7 @@ def daily_tab(uid: str, data: dict):
         total = sum((Decimal(str(row[c])) if str(row[c]).strip() else Decimal(0)) for c in cats)
         row["Total"] = str(total)
         rows.append(row)
-    df = pd.DataFrame(rows, columns=( ["Date"] + cats + ["Total"] )) if rows else pd.DataFrame(columns=( ["Date"] + cats + ["Total"] ))
+    df = pd.DataFrame(rows, columns=( ["Date"] + sorted_cats + ["Total"] )) if rows else pd.DataFrame(columns=( ["Date"] + sorted_cats + ["Total"] ))
 
     # KPIs for current month
     income_dec = Decimal(data["months"][mkey].get("income", "0") or "0")
@@ -421,10 +435,10 @@ def daily_tab(uid: str, data: dict):
 
     # Prepare numeric editor with currency formatting
     df_display = df.copy()
-    for _c in (cats + ["Total"]):
+    for _c in (sorted_cats + ["Total"]):
         if _c in df_display.columns:
             df_display[_c] = pd.to_numeric(df_display[_c], errors="coerce").fillna(0.0)
-    col_config = { _c: st.column_config.NumberColumn(_c, step=0.01, format=f"{CURRENCY}%.2f") for _c in cats }
+    col_config = { _c: st.column_config.NumberColumn(_c, step=0.01, format=f"{CURRENCY}%.2f") for _c in sorted_cats }
     col_config["Total"] = st.column_config.NumberColumn("Total", step=0.01, format=f"{CURRENCY}%.2f")
 
     st.write("### Daily Expenses")
@@ -496,10 +510,22 @@ def monthly_tab(uid: str, data: dict):
             except InvalidOperation:
                 pass
 
+    # Category sorting controls
+    sort_options = ["A → Z", "Z → A", "High → Low (spent)", "Low → High (spent)"]
+    sort_mode = st.selectbox("Category sort", sort_options, index=0, key=f"monthly_sort_{mkey}")
+    if sort_mode == "A → Z":
+        sorted_cats = sorted(cats)
+    elif sort_mode == "Z → A":
+        sorted_cats = sorted(cats, reverse=True)
+    elif sort_mode == "High → Low (spent)":
+        sorted_cats = sorted(cats, key=lambda c: cat_totals.get(c, Decimal(0)), reverse=True)
+    else:
+        sorted_cats = sorted(cats, key=lambda c: cat_totals.get(c, Decimal(0)))
+
     total_sum = sum(cat_totals.values())
     ratio = (total_sum / income * 100) if income > 0 else None
 
-    tbl = pd.DataFrame({"Category": cats, "Total": [float(cat_totals[c]) for c in cats]})
+    tbl = pd.DataFrame({"Category": sorted_cats, "Total": [float(cat_totals[c]) for c in sorted_cats]})
 
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("Income", format_money(income))
@@ -547,10 +573,22 @@ def yearly_tab(uid: str, data: dict):
                 except InvalidOperation:
                     pass
 
+    # Category sorting controls
+    sort_options = ["A → Z", "Z → A", "High → Low (spent)", "Low → High (spent)"]
+    sort_mode = st.selectbox("Category sort", sort_options, index=0, key=f"yearly_sort_{year}")
+    if sort_mode == "A → Z":
+        sorted_cats = sorted(cats)
+    elif sort_mode == "Z → A":
+        sorted_cats = sorted(cats, reverse=True)
+    elif sort_mode == "High → Low (spent)":
+        sorted_cats = sorted(cats, key=lambda c: cat_totals.get(c, Decimal(0)), reverse=True)
+    else:
+        sorted_cats = sorted(cats, key=lambda c: cat_totals.get(c, Decimal(0)))
+
     total_sum = sum(cat_totals.values())
     ratio = (total_sum / total_income * 100) if total_income > 0 else None
 
-    tbl = pd.DataFrame({"Category": cats, "Total": [float(cat_totals[c]) for c in cats]})
+    tbl = pd.DataFrame({"Category": sorted_cats, "Total": [float(cat_totals[c]) for c in sorted_cats]})
 
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("Total Income", format_money(total_income))
