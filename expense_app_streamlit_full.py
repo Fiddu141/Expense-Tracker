@@ -51,6 +51,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import requests
+import plotly.express as px
 
 # Crypto for "Remember Me"
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -405,15 +406,39 @@ def daily_tab(uid: str, data: dict):
         total = sum((Decimal(str(row[c])) if str(row[c]).strip() else Decimal(0)) for c in cats)
         row["Total"] = str(total)
         rows.append(row)
-    df = pd.DataFrame(rows, columns=(["Date"] + cats + ["Total"])) if rows else pd.DataFrame(columns=(["Date"] + cats + ["Total"]))
+    df = pd.DataFrame(rows, columns=( ["Date"] + cats + ["Total"] )) if rows else pd.DataFrame(columns=( ["Date"] + cats + ["Total"] ))
+
+    # KPIs for current month
+    income_dec = Decimal(data["months"][mkey].get("income", "0") or "0")
+    month_total_dec = sum(Decimal(str(r["Total"])) for r in rows) if rows else Decimal(0)
+    remaining_dec = income_dec - month_total_dec
+    c_k1, c_k2, c_k3, c_k4 = st.columns(4)
+    c_k1.metric("Income", format_money(income_dec))
+    c_k2.metric("Spent", format_money(month_total_dec))
+    c_k3.metric("Remaining", format_money(remaining_dec))
+    utilization_pct = (float(month_total_dec / income_dec * 100) if income_dec > 0 else 0.0)
+    c_k4.metric("Utilization", f"{utilization_pct:.1f}%")
+
+    # Prepare numeric editor with currency formatting
+    df_display = df.copy()
+    for _c in (cats + ["Total"]):
+        if _c in df_display.columns:
+            df_display[_c] = pd.to_numeric(df_display[_c], errors="coerce").fillna(0.0)
+    col_config = { _c: st.column_config.NumberColumn(_c, step=0.01, format=f"{CURRENCY}%.2f") for _c in cats }
+    col_config["Total"] = st.column_config.NumberColumn("Total", step=0.01, format=f"{CURRENCY}%.2f")
+
     st.write("### Daily Expenses")
     edited = st.data_editor(
-        df,
+        df_display,
         num_rows="dynamic",
         use_container_width=True,
         key=f"editor_{mkey}",
         disabled=["Total", "Date"],
+        column_config=col_config,
     )
+
+    csv_month = df.to_csv(index=False).encode("utf-8")
+    st.download_button("Download Month CSV", csv_month, file_name=f"expenses_{mkey}.csv", mime="text/csv")
 
     # Save grid changes
     if st.button("Save Changes"):
@@ -475,23 +500,25 @@ def monthly_tab(uid: str, data: dict):
     ratio = (total_sum / income * 100) if income > 0 else None
 
     tbl = pd.DataFrame({"Category": cats, "Total": [float(cat_totals[c]) for c in cats]})
-    st.dataframe(tbl, use_container_width=True)
 
-    st.write(f"**Monthly Total:** {format_money(Decimal(total_sum))}")
-    st.write(f"**Expense Ratio:** {ratio:.2f}% (Total / Income)" if ratio is not None else "**Expense Ratio:** — (Set Income)")
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Income", format_money(income))
+    k2.metric("Spent", format_money(Decimal(total_sum)))
+    k3.metric("Remaining", format_money(income - Decimal(total_sum)))
+    k4.metric("Expense Ratio", f"{ratio:.1f}%" if ratio is not None else "—")
 
     if cats:
-        fig1, ax1 = plt.subplots(figsize=(6, 3))
-        ax1.bar(cats, [float(cat_totals[c]) for c in cats])
-        ax1.set_title("Monthly Expenses by Category")
-        ax1.tick_params(axis='x', rotation=45)
-        st.pyplot(fig1)
+        fig_bar = px.bar(tbl, x="Category", y="Total", title="Monthly Expenses by Category", text_auto=True)
+        fig_bar.update_layout(xaxis_tickangle=-45, height=350, margin=dict(t=60, b=10))
+        st.plotly_chart(fig_bar, use_container_width=True)
 
         if total_sum > 0:
-            fig2, ax2 = plt.subplots(figsize=(6, 3))
-            ax2.pie([float(cat_totals[c]) for c in cats], labels=cats, autopct="%1.1f%%")
-            ax2.set_title("Distribution")
-            st.pyplot(fig2)
+            fig_pie = px.pie(tbl, names="Category", values="Total", title="Distribution", hole=0.4)
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+    st.dataframe(tbl, use_container_width=True)
+    csv = tbl.to_csv(index=False).encode("utf-8")
+    st.download_button("Download Monthly Totals CSV", csv, file_name=f"monthly_{mkey}.csv", mime="text/csv")
 
 
 def yearly_tab(uid: str, data: dict):
@@ -524,70 +551,75 @@ def yearly_tab(uid: str, data: dict):
     ratio = (total_sum / total_income * 100) if total_income > 0 else None
 
     tbl = pd.DataFrame({"Category": cats, "Total": [float(cat_totals[c]) for c in cats]})
-    st.dataframe(tbl, use_container_width=True)
 
-    st.write(f"**Yearly Total:** {format_money(Decimal(total_sum))}")
-    st.write(f"**Expense Ratio:** {ratio:.2f}% (Total / Income)" if ratio is not None else "**Expense Ratio:** — (Set monthly incomes)")
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Total Income", format_money(total_income))
+    k2.metric("Total Spent", format_money(Decimal(total_sum)))
+    k3.metric("Savings", format_money(total_income - Decimal(total_sum)))
+    k4.metric("Expense Ratio", f"{ratio:.1f}%" if ratio is not None else "—")
 
     if cats:
-        fig1, ax1 = plt.subplots(figsize=(6, 3))
-        ax1.bar(cats, [float(cat_totals[c]) for c in cats])
-        ax1.set_title("Yearly Expenses by Category")
-        ax1.tick_params(axis='x', rotation=45)
-        st.pyplot(fig1)
+        fig_bar = px.bar(tbl, x="Category", y="Total", title="Yearly Expenses by Category", text_auto=True)
+        fig_bar.update_layout(xaxis_tickangle=-45, height=350, margin=dict(t=60, b=10))
+        st.plotly_chart(fig_bar, use_container_width=True)
 
         if total_sum > 0:
-            fig2, ax2 = plt.subplots(figsize=(6, 3))
-            ax2.pie([float(cat_totals[c]) for c in cats], labels=cats, autopct="%1.1f%%")
-            ax2.set_title("Distribution")
-            st.pyplot(fig2)
+            fig_pie = px.pie(tbl, names="Category", values="Total", title="Distribution", hole=0.4)
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+    st.dataframe(tbl, use_container_width=True)
+    csv = tbl.to_csv(index=False).encode("utf-8")
+    st.download_button("Download Yearly Totals CSV", csv, file_name=f"yearly_{year}.csv", mime="text/csv")
 
 
 # -------------------- App --------------------
 def main():
-    st.set_page_config(page_title=APP_TITLE, layout="wide")
-    st.title(APP_TITLE)
+	st.set_page_config(page_title=APP_TITLE, page_icon="💸", layout="wide")
+	st.title(APP_TITLE)
 
-    # Firebase Admin for DB
-    try:
-        init_firebase_admin()
-    except Exception as e:
-        st.error(f"Firebase init failed: {e}")
-        st.stop()
+	# Firebase Admin for DB
+	try:
+		init_firebase_admin()
+	except Exception as e:
+		st.error(f"Firebase init failed: {e}")
+		st.stop()
 
-    # Auth (auto or interactive)
-    auth = auth_gate()
-    if not auth and "uid" not in st.session_state:
-        st.stop()
+	# Auth (auto or interactive)
+	auth = auth_gate()
+	if not auth and "uid" not in st.session_state:
+		st.stop()
 
-    uid = st.session_state.get("uid")
-    email = st.session_state.get("email")
+	uid = st.session_state.get("uid")
+	email = st.session_state.get("email")
 
-    st.success(f"Signed in as {email}")
-    colL, colR = st.columns([1,3])
-    with colL:
-        if st.button("Logout"):
-            st.session_state.pop("uid", None)
-            st.session_state.pop("email", None)
-            clear_saved_session()
-            st.experimental_rerun()
+	with st.sidebar:
+		st.markdown("### Account")
+		st.caption(f"Signed in as {email}")
+		if st.button("Logout"):
+			st.session_state.pop("uid", None)
+			st.session_state.pop("email", None)
+			clear_saved_session()
+			st.experimental_rerun()
+		st.markdown("---")
+		st.markdown("### Navigation")
+		st.caption("Use tabs on the right to switch views.")
 
-    # Load data
-    data = load_all_data(uid)
-    if not data:
-        data = DEFAULT_DATA
-        fb_set(uid, "", data)
+	# Load data
+	data = load_all_data(uid)
+	if not data:
+		data = DEFAULT_DATA
+		fb_set(uid, "", data)
 
-    # Tabs
-    tab1, tab2, tab3 = st.tabs(["Daily", "Monthly Summary", "Yearly Summary"])
-    with tab1:
-        daily_tab(uid, data)
-    with tab2:
-        monthly_tab(uid, data)
-    with tab3:
-        yearly_tab(uid, data)
+	# Tabs
+	tab1, tab2, tab3 = st.tabs(["Daily", "Monthly Summary", "Yearly Summary"])
+	with tab1:
+		daily_tab(uid, data)
+	with tab2:
+		monthly_tab(uid, data)
+	with tab3:
+		yearly_tab(uid, data)
 
-    st.caption("Your data root: /users/%s/  (private per account)" % uid)
+	st.caption("Your data root: /users/%s/  (private per account)" % uid)
 
 
 if __name__ == "__main__":
