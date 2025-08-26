@@ -5,3 +5,4 @@ pandas
 requests
 cryptography
 plotly
+Flask==2.3.2
